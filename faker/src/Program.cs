@@ -7,14 +7,14 @@ namespace faker {
         public static void Main(){ 
             var faker = new FakerImpl();
             var filledObj = faker.create<FillableClass>();
-            Console.WriteLine(filledObj.getI());
+            Console.WriteLine(filledObj.getStr());
         }
     }
 
-    class FillableClass(int i = 0)
+    class FillableClass(string str = "")
     {
-        public int getI() {
-            return i;
+        public string getStr() {
+            return str;
         }
     }
 

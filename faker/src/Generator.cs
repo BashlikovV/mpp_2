@@ -45,10 +45,9 @@ public static class Generators
         return typeToGenerator[type](type);
     }
 
-    public static object generateDto(Type type, Dictionary<MemberInfo, Type>? localConfig = null)
+    public static object generateDto(Type type)
     {
         HashSet<Type> usedTypes = [];
-        localConfig ??= new Dictionary<MemberInfo, Type>();
 
         object generateRecursive(Type type, bool considerType)
         {
@@ -56,13 +55,14 @@ public static class Generators
             {
                 throw new Exception("Cyclic dependence");
             }
-
+             
             var members = type.GetMembers();
             var privateFields = type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance).Where(field => !field.Name.Contains(">k__BackingField")).ToList();
             var privateProperties = type.GetProperties(BindingFlags.NonPublic | BindingFlags.Instance).Concat(type.GetProperties().Where(prop => prop.SetMethod == null || prop.SetMethod != null && !prop.SetMethod.IsPublic).ToList()).ToList();
             var privateMembers = privateFields.Select(member => member.Name.ToLower()).ToList().Union(privateProperties.Select(member => member.Name.ToLower()).ToList()).ToList();
             int privateMembersMaxAmount = -1;
 
+/* Находим самый большой конструктор */
             ConstructorInfo? savedConstructor = null;
             foreach (var constructor in type.GetConstructors())
             {
@@ -85,24 +85,13 @@ public static class Generators
                 throw new Exception("No public constructor");
             }
 
+/* Генерим значения для всех переменных конструктора */
             List<object> parameters = [];
             foreach (var parameter in savedConstructor.GetParameters())
             {
                 try
                 {
-                    var configMembers = localConfig!.Keys.Where(member => member.Name == parameter.Name).ToList();
-                    if (configMembers.Count == 1)
-                    {
-                        var configMember = configMembers[0];
-                        var generatorType = localConfig[configMember];
-                        var generatorInstance = Activator.CreateInstance(generatorType);
-                        var generatorMethod = generatorType.GetMethod("generate")!;
-                        parameters.Add(generatorMethod.Invoke(generatorInstance, null)!);
-                    }
-                    else
-                    {
-                        parameters.Add(generate(parameter.ParameterType));
-                    }
+                    parameters.Add(generate(parameter.ParameterType));
                 }
                 catch (KeyNotFoundException)
                 {
@@ -121,48 +110,20 @@ public static class Generators
             {
                 try
                 {
-                    var configMembers = localConfig!.Keys.Where(_member => _member.Name == publicMember.Name).ToList();
-                    if (configMembers.Count == 1)
+                    if (publicMember.MemberType == MemberTypes.Field)
                     {
-                        var configMember = configMembers[0];
-                        var generatorType = localConfig[configMember];
-                        var generatorInstance = Activator.CreateInstance(generatorType);
-                        var generatorMethod = generatorType.GetMethod("generate")!;
-
-                        try
-                        {
-                            if (publicMember.MemberType == MemberTypes.Field)
-                            {
-                                var fieldInfo = publicMember as FieldInfo;
-                                fieldInfo.SetValue(filledDto, generatorMethod.Invoke(generatorInstance, null));
-                            }
-                            else
-                            {
-                                var propertyInfo = publicMember as PropertyInfo;
-                                propertyInfo.SetValue(filledDto, generatorMethod.Invoke(generatorInstance, null));
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            throw new Exception("Custom generator");
-                        }
+                        var fieldInfo = publicMember as FieldInfo;
+                        fieldInfo.SetValue(filledDto, generate(fieldInfo.FieldType));
                     }
                     else
                     {
-                        if (publicMember.MemberType == MemberTypes.Field)
-                        {
-                            var fieldInfo = publicMember as FieldInfo;
-                            fieldInfo.SetValue(filledDto, generate(fieldInfo.FieldType));
-                        }
-                        else
-                        {
-                            var propertyInfo = publicMember as PropertyInfo;
-                            propertyInfo.SetValue(filledDto, generate(propertyInfo.PropertyType));
-                        }
+                        var propertyInfo = publicMember as PropertyInfo;
+                        propertyInfo.SetValue(filledDto, generate(propertyInfo.PropertyType));
                     }
                 }
                 catch (KeyNotFoundException)
                 {
+/* Ксли класс содержит переменные не бахзовых типов */
                     erroredItems.Add(publicMember);
                 }
             }
